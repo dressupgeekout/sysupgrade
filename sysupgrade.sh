@@ -39,7 +39,7 @@ shtk_import process
 #
 # Please remember to update sysbuild(1) if you change this list.
 SYSUPGRADE_CONFIG_VARS="AUTOCLEAN CACHEDIR DESTDIR ETCUPDATE KERNEL
-                        POSTINSTALL_AUTOFIX RELEASEDIR SETS"
+                        POSTINSTALL_AUTOFIX RELEASEDIR SETS SET_SUFFIX"
 
 
 # Directory in which to keep downloaded release files.
@@ -66,6 +66,7 @@ sysupgrade_set_defaults() {
     shtk_config_set ETCUPDATE "yes"
     shtk_config_set KERNEL "AUTO"
     shtk_config_set SETS "AUTO"
+    shtk_config_set SET_SUFFIX ".tgz"
 }
 
 
@@ -163,19 +164,24 @@ require_cached_file() {
 # The set to be extracted must have been previously fetched into the cache
 # directory by sysupgrade_fetch command.
 #
-# \param set_name Name of the set to extract, without the .tgz extension.
+# \param set_name Name of the set to extract, without the SET_SUFFIX extension.
 extract_set() {
     local set_name="${1}"; shift
 
-    require_cached_file "${set_name}.tgz"
+    require_cached_file "${set_name}$(shtk_config_get SET_SUFFIX)"
 
     local destdir="$(shtk_config_get_default DESTDIR "")"
-    local set_tgz="$(get_cached_file "${set_name}.tgz")"
+    local set_tgz="$(get_cached_file "${set_name}$(shtk_config_get SET_SUFFIX)")"
 
     shtk_cli_info "Extracting ${set_name} into ${destdir}/"
     [ -z "${destdir}" ] || shtk_process_run mkdir -p "${destdir}"
-    progress -zf "${set_tgz}" tar -xp -C "${destdir}/" -f - \
-        || shtk_cli_error "Failed to extract ${set_tgz}"
+
+    if [ "$(shtk_config_get SET_SUFFIX)" = $(shtk_config_get_default SET_SUFFIX) ]; then
+        progress -zf "${set_tgz}" tar -xp -C "${destdir}/" -f - \
+            || shtk_cli_error "Failed to extract ${set_tgz}"
+    else
+        tar -xJp -C "${destdir}/" -f "${set_tgz}" || shtk_cli_error "Failed to extract ${set_tgz}"
+    fi
 }
 
 
@@ -192,7 +198,7 @@ sysupgrade_fetch() {
     local cachedir="$(shtk_config_get CACHEDIR)"
     local fetch_files=
     for set_name in $(shtk_config_get SETS); do
-        fetch_files="${fetch_files} binary/sets/${set_name}.tgz"
+        fetch_files="${fetch_files} binary/sets/${set_name}$(shtk_config_get SET_SUFFIX)"
     done
     if shtk_config_has KERNEL; then
         local kernel_name="$(shtk_config_get KERNEL)"
@@ -335,7 +341,7 @@ sysupgrade_sets() {
     done
 
     for set_name in ${sets}; do
-        require_cached_file "${set_name}.tgz"
+        require_cached_file "${set_name}$(shtk_config_get SET_SUFFIX)"
     done
 
     shtk_cli_info "Upgrading base system"
@@ -367,8 +373,8 @@ sysupgrade_etcupdate() {
 
     local sflags=
     for set_name in ${sets}; do
-        require_cached_file "${set_name}.tgz"
-        sflags="${sflags} -s$(get_cached_file "${set_name}.tgz")"
+        require_cached_file "${set_name}$(shtk_config_get SET_SUFFIX)"
+        sflags="${sflags} -s$(get_cached_file "${set_name}$(shtk_config_get SET_SUFFIX)")"
     done
 
     shtk_cli_info "Upgrading /etc interactively"
@@ -393,8 +399,8 @@ sysupgrade_postinstall() {
 
     local sflags=
     for set_name in ${sets}; do
-        require_cached_file "${set_name}.tgz"
-        sflags="${sflags} -s$(get_cached_file "${set_name}.tgz")"
+        require_cached_file "${set_name}$(shtk_config_get SET_SUFFIX)"
+        sflags="${sflags} -s$(get_cached_file "${set_name}$(shtk_config_get SET_SUFFIX)")"
     done
 
     shtk_cli_info "Performing postinstall checks"
